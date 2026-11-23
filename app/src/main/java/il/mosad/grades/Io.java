@@ -134,41 +134,45 @@ public class Io {
 
         db.getWritableDatabase().beginTransaction();
         try {
-            if (students != null) for (int i = 0; i < students.length(); i++) {
-                JSONObject s = students.getJSONObject(i);
-                String tz = normTz(s.optString("tz", ""));
-                if (tz.length() == 0) continue;
-                long sid = s.getLong("id");
-                db.upsertStudent(tz, Long.valueOf(sid), "", "", s.optString("className", ""), "");
-                // שם מלא מהמערכת משמש רק אם אין עדיין שם בטלפון (רשימת התלמידים מה-Excel גוברת)
-                db.setNameIfMissing(tz, s.optString("name", ""));
-                sidToTz.put(Long.valueOf(sid), tz);
-                nStudents++;
-            }
-            if (exams != null) for (int i = 0; i < exams.length(); i++) {
-                JSONObject e = exams.getJSONObject(i);
-                String cls = e.optString("className", ""), subj = e.optString("subject", "");
-                String ttl = e.optString("title", ""), dt = e.optString("date", "");
-                Long local = db.findLocalExam(cls, subj, ttl, dt);
-                if (local != null) db.adoptExam(local.longValue(), e.getLong("id"));
-                db.upsertExam(e.getLong("id"), cls, subj, ttl, dt);
-                nExams++;
-            }
-            if (scores != null) for (int i = 0; i < scores.length(); i++) {
-                JSONObject r = scores.getJSONObject(i);
-                String tz = null;
-                if (!r.isNull("studentId")) tz = sidToTz.get(Long.valueOf(r.getLong("studentId")));
-                if (tz == null && r.has("tz")) tz = normTz(r.optString("tz", ""));
-                if (tz == null || tz.length() == 0) { nSkipped++; continue; }
-                long examId = r.getLong("examId");
-                Db.Row old = db.existing(examId, tz);
-                Double score = r.isNull("score") ? null : Double.valueOf(r.getDouble("score"));
-                String note = r.optString("note", "");
-                if (score == null && old != null) score = old.score;
-                if (note.length() == 0 && old != null) note = old.note;
-                if (score == null && note.length() == 0) { nSkipped++; continue; }
-                db.writeScore(examId, tz, score, note);
-                nScores++;
+            try {
+                if (students != null) for (int i = 0; i < students.length(); i++) {
+                    JSONObject s = students.getJSONObject(i);
+                    String tz = normTz(s.optString("tz", ""));
+                    if (tz.length() == 0) continue;
+                    long sid = s.getLong("id");
+                    db.upsertStudent(tz, Long.valueOf(sid), "", "", s.optString("className", ""), "");
+                    // שם מלא מהמערכת משמש רק אם אין עדיין שם בטלפון (רשימת התלמידים מה-Excel גוברת)
+                    db.setNameIfMissing(tz, s.optString("name", ""));
+                    sidToTz.put(Long.valueOf(sid), tz);
+                    nStudents++;
+                }
+                if (exams != null) for (int i = 0; i < exams.length(); i++) {
+                    JSONObject e = exams.getJSONObject(i);
+                    String cls = e.optString("className", ""), subj = e.optString("subject", "");
+                    String ttl = e.optString("title", ""), dt = e.optString("date", "");
+                    Long local = db.findLocalExam(cls, subj, ttl, dt);
+                    if (local != null) db.adoptExam(local.longValue(), e.getLong("id"));
+                    db.upsertExam(e.getLong("id"), cls, subj, ttl, dt);
+                    nExams++;
+                }
+                if (scores != null) for (int i = 0; i < scores.length(); i++) {
+                    JSONObject r = scores.getJSONObject(i);
+                    String tz = null;
+                    if (!r.isNull("studentId")) tz = sidToTz.get(Long.valueOf(r.getLong("studentId")));
+                    if (tz == null && r.has("tz")) tz = normTz(r.optString("tz", ""));
+                    if (tz == null || tz.length() == 0) { nSkipped++; continue; }
+                    long examId = r.getLong("examId");
+                    Db.Row old = db.existing(examId, tz);
+                    Double score = r.isNull("score") ? null : Double.valueOf(r.getDouble("score"));
+                    String note = r.optString("note", "");
+                    if (score == null && old != null) score = old.score;
+                    if (note.length() == 0 && old != null) note = old.note;
+                    if (score == null && note.length() == 0) { nSkipped++; continue; }
+                    db.writeScore(examId, tz, score, note);
+                    nScores++;
+                }
+            } catch (JSONException e) {
+                throw new IOException("שגיאה במבנה נתוני ה-JSON בקובץ: " + e.getMessage());
             }
             db.getWritableDatabase().setTransactionSuccessful();
         } finally {
@@ -292,7 +296,7 @@ public class Io {
             int n;
             while ((n = in.read(b)) != -1) bo.write(b, 0, n);
             String s = new String(bo.toByteArray(), "UTF-8");
-            if (s.length() > 0 && s.charAt(0) == '﻿') s = s.substring(1);
+            if (s.length() > 0 && s.charAt(0) == '\uFEFF') s = s.substring(1);
             return s;
         } finally {
             in.close();
